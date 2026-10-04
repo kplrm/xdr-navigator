@@ -1,0 +1,12 @@
+{
+  "name": "xdr-navigator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "XDR Navigator AI agents for OpenSearch Dashboards",
+  "main": "index.js",
+  "scripts": {
+    "build": "bash ./scripts/build_external.sh",
+    "typecheck": "../OpenSearch-Dashboards/node_modules/.bin/tsc --noEmit -p tsconfig.json",
+    "test": "node --test scripts/test_navigator.cjs"
+  }
+}

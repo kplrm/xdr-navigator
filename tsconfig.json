@@ -1,0 +1,13 @@
+{
+  "extends": "../OpenSearch-Dashboards/tsconfig.json",
+  "include": ["index.ts", "common/**/*.ts", "public/**/*.ts", "public/**/*.tsx", "server/**/*.ts", "typings/**/*.d.ts", "../OpenSearch-Dashboards/typings/**/*"],
+  "exclude": ["node_modules", "*/node_modules/"],
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "./target",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": ["node", "react", "react-dom", "jest"],
+    "typeRoots": ["../OpenSearch-Dashboards/node_modules/@types", "node_modules/@types"]
+  }
+}

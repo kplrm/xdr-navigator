@@ -1,0 +1,9 @@
+{
+  "id": "xdrNavigator",
+  "version": "0.1.0",
+  "opensearchDashboardsVersion": "3.5.0",
+  "server": true,
+  "ui": true,
+  "requiredPlugins": [],
+  "optionalPlugins": []
+}
