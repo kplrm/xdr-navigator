@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Conversation, ConversationTurn, McpConnection, ModelConnection, NavigatorAgent } from '../common/types';
 import { Api, ConversationSummary, Session } from './api';
 
-interface Props { api: Api; mode: 'page' | 'sidecar'; initialConversationId?: string; onSelectChat: (id?: string) => void }
-type Section = 'Chat' | 'Models' | 'Agents' | 'MCP servers';
+interface Props { api: Api; mode: 'page' | 'sidecar'; initialConversationId?: string; onSelectChat: (id?: string) => void; onClose?: () => void }
+type Section = 'Conversations' | 'Models' | 'Agents' | 'MCP servers';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-export function NavigatorApp({ api, mode, initialConversationId, onSelectChat }: Props) {
-  const [section, setSection] = useState<Section>('Chat');
+export function NavigatorApp({ api, mode, initialConversationId, onSelectChat, onClose }: Props) {
+  const [section, setSection] = useState<Section>('Conversations');
   const [session, setSession] = useState<Session>();
   const [models, setModels] = useState<ModelConnection[]>([]);
   const [agents, setAgents] = useState<NavigatorAgent[]>([]);
@@ -20,18 +20,58 @@ export function NavigatorApp({ api, mode, initialConversationId, onSelectChat }:
     } catch (e) { setError(message(e)); }
   }, [api]);
   useEffect(() => { void reload(); }, [reload]);
-  return <div className={`xdrNav xdrNav--${mode}`}>
-    {mode === 'page' && <header className="xdrNavPageHeader"><div><h1>XDR Navigator</h1><p>Conversations, models, agents, and MCP tools</p></div></header>}
-    <nav className="xdrNavTabs">
-      {(['Chat', ...(mode === 'page' && session?.user.admin ? ['Models', 'Agents', 'MCP servers'] : [])] as Section[]).map((item) =>
-        <button key={item} className={item === section ? 'active' : ''} onClick={() => setSection(item)}>{item}</button>)}
-    </nav>
+  useEffect(() => { if (mode === 'page' && session?.user.admin) setSection('Models'); }, [mode, session?.user.admin]);
+
+  if (mode === 'sidecar') return <div className="xdrNav xdrNav--sidecar">
+    <header className="xdrNavSidecarHeader"><strong>XDR Navigator</strong><button aria-label="Close XDR Navigator" title="Close chat" onClick={onClose}>×</button></header>
     {error && <div className="xdrNavError">{error}</div>}
-    {section === 'Chat' && <ChatPanel api={api} session={session} models={models} agents={agents} initialConversationId={initialConversationId} onSelectChat={onSelectChat} />}
-    {section === 'Models' && session?.user.admin && <ModelsPanel api={api} models={models} reload={reload} encryptionReady={session.encryptionReady} />}
-    {section === 'Agents' && session?.user.admin && <AgentsPanel api={api} agents={agents} servers={servers} reload={reload} />}
-    {section === 'MCP servers' && session?.user.admin && <McpPanel api={api} servers={servers} reload={reload} encryptionReady={session.encryptionReady} />}
+    {!session && error ? <div className="xdrNavAuthRequired">Sign in to use XDR Navigator. OpenSearch Security must be enabled.</div> :
+      <ChatPanel api={api} session={session} models={models} agents={agents} initialConversationId={initialConversationId} onSelectChat={onSelectChat} />}
   </div>;
+
+  return <div className="xdrNav xdrNav--page">
+    <header className="xdrNavPageHeader"><div><h1>XDR Navigator</h1><p>Manage model connections, AI agents, MCP tools, and conversations</p></div></header>
+    {error && <div className="xdrNavError">{error}</div>}
+    {!session ? <div className="xdrNavAuthRequired">Sign in to manage Navigator. OpenSearch Security must be enabled.</div> : <>
+      <nav className="xdrNavTabs" aria-label="Navigator settings">
+        {(['Conversations', ...(session.user.admin ? ['Models', 'Agents', 'MCP servers'] : [])] as Section[]).map((item) =>
+          <button key={item} className={item === section ? 'active' : ''} onClick={() => setSection(item)}>{item === 'Models' ? 'Model connections' : item === 'Agents' ? 'AI agents' : item}</button>)}
+      </nav>
+      {section === 'Conversations' && <ConversationsPanel api={api} session={session} onOpenChat={(id) => onSelectChat(id)} />}
+      {section === 'Models' && session.user.admin && <ModelsPanel api={api} models={models} reload={reload} encryptionReady={session.encryptionReady} />}
+      {section === 'Agents' && session.user.admin && <AgentsPanel api={api} agents={agents} servers={servers} reload={reload} />}
+      {section === 'MCP servers' && session.user.admin && <McpPanel api={api} servers={servers} reload={reload} encryptionReady={session.encryptionReady} />}
+    </>}
+  </div>;
+}
+
+function ConversationsPanel({ api, session, onOpenChat }: { api: Api; session: Session; onOpenChat: (id: string) => void }) {
+  const [items, setItems] = useState<ConversationSummary[]>([]);
+  const [error, setError] = useState('');
+  const refresh = useCallback(async () => {
+    try { setItems(await api.conversations()); setError(''); }
+    catch (e) { setError(message(e)); }
+  }, [api]);
+  useEffect(() => { void refresh(); }, [refresh]);
+  const update = async (path: string, method: string, body?: unknown) => {
+    try { await api.call(path, method, body); await refresh(); }
+    catch (e) { setError(message(e)); }
+  };
+  return <section className="xdrNavManage"><h2>Conversations</h2><p>Open a conversation in the AI panel or manage its access and retention.</p>
+    {error && <div className="xdrNavError">{error}</div>}
+    {!items.length ? <div className="xdrNavEmptyList">No conversations yet. Open XDR AI Agent in the top-right corner to start one.</div> :
+      <div className="xdrNavConversationList">{items.map((item) => {
+        const canManage = session.user.admin || session.user.id === item.ownerId;
+        return <article key={item.id} className="xdrNavConversationCard">
+          <div><strong>{item.title}</strong><small>{item.ownerName} · {item.turnCount} messages · {new Date(item.updatedAt).toLocaleString()}</small></div>
+          <div className="xdrNavConversationCardActions">
+            <button onClick={() => onOpenChat(item.id)}>Open chat</button>
+            {canManage ? <select aria-label={`Access for ${item.title}`} value={item.visibility} onChange={(event) => void update(`/conversations/${item.id}/visibility`, 'PUT', { visibility: event.target.value })}><option value="private">Private</option><option value="shared">Shared</option></select> : <span className="xdrNavBadge">Shared</span>}
+            {canManage && <button className="xdrNavDanger" onClick={() => { if (window.confirm('Delete this entire conversation?')) void update(`/conversations/${item.id}`, 'DELETE'); }}>Delete</button>}
+          </div>
+        </article>;
+      })}</div>}
+  </section>;
 }
 
 function ChatPanel({ api, session, models, agents, initialConversationId, onSelectChat }: {

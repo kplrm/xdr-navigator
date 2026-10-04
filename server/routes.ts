@@ -1,3 +1,4 @@
+import { schema } from '@osd/config-schema';
 import { randomUUID } from 'crypto';
 import type { CoreSetup, IRouter, Logger } from '../../OpenSearch-Dashboards/src/core/server';
 import { Conversation, ConversationTurn, McpConnection, ModelConnection, NavigatorAgent, Visibility } from '../common/types';
@@ -6,6 +7,11 @@ import { discoverTools } from './mcp_client';
 import { runTurn } from './runner';
 import { encryptionReady, principalFor, Principal, seal } from './security';
 import { Store } from './store';
+
+// Dashboards exposes body and path values only when their schemas are declared.
+const bodyValidation = { body: schema.object({}, { unknowns: 'allow' }) };
+const idValidation = { params: schema.object({ id: schema.string() }) };
+const idBodyValidation = { ...idValidation, ...bodyValidation };
 
 type Handler = (store: Store, actor: Principal, request: any) => Promise<unknown>;
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -72,7 +78,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     const visible = visibleModel(model);
     return actor.admin ? visible : { ...visible, url: '' };
   })));
-  route.post({ path: '/api/xdr-navigator/models/test', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/models/test', validate: bodyValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const body = request.body || {};
     const old = body.id ? await store.get<ModelConnection>('model', body.id) : undefined;
@@ -83,7 +89,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     const result = await complete(model, [{ role: 'user', content: 'Reply with OK.' }]);
     return { ok: true, response: result.message.content };
   }));
-  route.post({ path: '/api/xdr-navigator/models', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/models', validate: bodyValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const body = request.body || {};
     const old = body.id ? await store.get<ModelConnection>('model', body.id) : undefined;
@@ -96,7 +102,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     };
     await store.save('model', model); return visibleModel(model);
   }));
-  route.delete({ path: '/api/xdr-navigator/models/{id}', validate: false }, wrap(async (store, actor, request) => {
+  route.delete({ path: '/api/xdr-navigator/models/{id}', validate: idValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor); await store.delete('model', id(request)); return { deleted: true };
   }));
 
@@ -104,7 +110,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     const visible = visibleMcp(server);
     return actor.admin ? visible : { ...visible, url: '' };
   })));
-  route.post({ path: '/api/xdr-navigator/mcp/test', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/mcp/test', validate: bodyValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const body = request.body || {};
     const old = body.id ? await store.get<McpConnection>('mcp', body.id) : undefined;
@@ -114,7 +120,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     };
     return { tools: await discoverTools(server) };
   }));
-  route.post({ path: '/api/xdr-navigator/mcp', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/mcp', validate: bodyValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const body = request.body || {};
     const old = body.id ? await store.get<McpConnection>('mcp', body.id) : undefined;
@@ -130,19 +136,19 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     server.lastDiscoveredAt = new Date().toISOString();
     await store.save('mcp', server); return visibleMcp(server);
   }));
-  route.post({ path: '/api/xdr-navigator/mcp/{id}/refresh', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/mcp/{id}/refresh', validate: idValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const server = await store.get<McpConnection>('mcp', id(request));
     if (!server) throw new HttpError(404, 'MCP server not found');
     server.tools = await discoverTools(server); server.lastDiscoveredAt = new Date().toISOString();
     await store.save('mcp', server); return visibleMcp(server);
   }));
-  route.delete({ path: '/api/xdr-navigator/mcp/{id}', validate: false }, wrap(async (store, actor, request) => {
+  route.delete({ path: '/api/xdr-navigator/mcp/{id}', validate: idValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor); await store.delete('mcp', id(request)); return { deleted: true };
   }));
 
   route.get({ path: '/api/xdr-navigator/agents', validate: false }, wrap(async (store) => store.list<NavigatorAgent>('agent')));
-  route.post({ path: '/api/xdr-navigator/agents', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/agents', validate: bodyValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const body = request.body || {};
     const old = body.id ? await store.get<NavigatorAgent>('agent', body.id) : undefined;
@@ -158,7 +164,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     };
     await store.save('agent', agent); return agent;
   }));
-  route.delete({ path: '/api/xdr-navigator/agents/{id}', validate: false }, wrap(async (store, actor, request) => {
+  route.delete({ path: '/api/xdr-navigator/agents/{id}', validate: idValidation }, wrap(async (store, actor, request) => {
     requireAdmin(actor);
     const agent = await store.get<NavigatorAgent>('agent', id(request));
     if (!agent) throw new HttpError(404, 'Agent not found');
@@ -172,7 +178,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map(({ turns, ...chat }) => ({ ...chat, turnCount: turns.length }));
   }));
-  route.post({ path: '/api/xdr-navigator/conversations', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/conversations', validate: bodyValidation }, wrap(async (store, actor, request) => {
     const body = request.body || {};
     const models = await store.list<ModelConnection>('model');
     const agents = await store.list<NavigatorAgent>('agent');
@@ -187,12 +193,12 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
     };
     await store.save('conversation', chat); return chat;
   }));
-  route.get({ path: '/api/xdr-navigator/conversations/{id}', validate: false }, wrap(async (store, actor, request) => getChat(store, request, actor)));
-  route.delete({ path: '/api/xdr-navigator/conversations/{id}', validate: false }, wrap(async (store, actor, request) => {
+  route.get({ path: '/api/xdr-navigator/conversations/{id}', validate: idValidation }, wrap(async (store, actor, request) => getChat(store, request, actor)));
+  route.delete({ path: '/api/xdr-navigator/conversations/{id}', validate: idValidation }, wrap(async (store, actor, request) => {
     const chat = await getChat(store, request, actor); requireOwner(chat, actor);
     await store.delete('conversation', chat.id); return { deleted: true };
   }));
-  route.put({ path: '/api/xdr-navigator/conversations/{id}/visibility', validate: false }, wrap(async (store, actor, request) => {
+  route.put({ path: '/api/xdr-navigator/conversations/{id}/visibility', validate: idBodyValidation }, wrap(async (store, actor, request) => {
     const chat = await getChat(store, request, actor); requireOwner(chat, actor);
     const visibility: Visibility = request.body?.visibility;
     if (visibility !== 'private' && visibility !== 'shared') throw new HttpError(400, 'Visibility must be private or shared');
@@ -208,7 +214,7 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
       return chat;
     } catch (error) { activeRuns.delete(chat.id); throw error; }
   };
-  route.post({ path: '/api/xdr-navigator/conversations/{id}/turns', validate: false }, wrap(async (store, actor, request) => {
+  route.post({ path: '/api/xdr-navigator/conversations/{id}/turns', validate: idBodyValidation }, wrap(async (store, actor, request) => {
     const chat = await getChat(store, request, actor);
     const prompt = text(request.body?.prompt, 'Message', 30000);
     const modelId = request.body?.modelId || chat.modelId;
@@ -236,6 +242,6 @@ export function registerRoutes(router: IRouter, core: CoreSetup, storePromise: P
       return chat;
     } catch (error) { activeRuns.delete(chat.id); throw error; }
   };
-  route.post({ path: '/api/xdr-navigator/conversations/{id}/edit-last', validate: false }, wrap((store, actor, request) => restart(store, actor, request, true)));
-  route.post({ path: '/api/xdr-navigator/conversations/{id}/retry-last', validate: false }, wrap((store, actor, request) => restart(store, actor, request, false)));
+  route.post({ path: '/api/xdr-navigator/conversations/{id}/edit-last', validate: idBodyValidation }, wrap((store, actor, request) => restart(store, actor, request, true)));
+  route.post({ path: '/api/xdr-navigator/conversations/{id}/retry-last', validate: idValidation }, wrap((store, actor, request) => restart(store, actor, request, false)));
 }

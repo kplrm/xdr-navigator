@@ -14,6 +14,20 @@ const { discoverTools, callTool } = require('../server/mcp_client.ts');
 const { runTurn } = require('../server/runner.ts');
 const { registerRoutes } = require('../server/routes.ts');
 
+// Match Dashboards' contract: undeclared body/params/query are empty objects.
+function validatedRouter(handlers) {
+  return new Proxy({}, { get: (_target, method) => (config, handler) => {
+    handlers[`${method} ${config.path}`] = (context, request, response) => {
+      const parsed = { ...request };
+      for (const key of ['body', 'params', 'query']) {
+        const validator = config.validate && config.validate[key];
+        parsed[key] = validator ? validator.validate(request[key] || {}) : {};
+      }
+      return handler(context, parsed, response);
+    };
+  } });
+}
+
 async function serve(handler) {
   const server = http.createServer(async (req, res) => {
     const chunks = [];
@@ -88,7 +102,7 @@ test('first turn generates a title, runs an assigned tool, and stores the answer
 
 test('private chats deny other users while admins and shared readers can read', async () => {
   const handlers = {};
-  const router = new Proxy({}, { get: (_target, method) => (config, handler) => { handlers[`${method} ${config.path}`] = handler; } });
+  const router = validatedRouter(handlers);
   const chat = { id: 'chat', ownerId: 'alice', ownerName: 'Alice', title: 'Private', visibility: 'private', turns: [], createdAt: '', updatedAt: '', modelId: '', agentId: '' };
   const store = { get: async () => chat };
   const core = { http: { auth: { get: (req) => ({ status: 'authenticated', state: { authInfo: { user_id: req.user, roles: req.roles || [] } } }) } } };
@@ -118,7 +132,7 @@ test('saving an MCP connection discovers and stores its tools', async () => {
     throw new Error(`Unexpected method: ${body.method}`);
   });
   const handlers = {};
-  const router = new Proxy({}, { get: (_target, method) => (config, handler) => { handlers[`${method} ${config.path}`] = handler; } });
+  const router = validatedRouter(handlers);
   let saved;
   const store = { get: async () => undefined, list: async () => [], save: async (_kind, value) => { saved = value; } };
   const core = { http: { auth: { get: () => ({ status: 'authenticated', state: { authInfo: { user_id: 'admin', roles: ['xdr_navigator_admin'] } } }) } } };
@@ -131,4 +145,44 @@ test('saving an MCP connection discovers and stores its tools', async () => {
     assert.equal(saved.tools[0].name, 'search_alerts');
     assert.ok(saved.lastDiscoveredAt);
   } finally { await remote.close(); }
+});
+
+
+test('model test and save receive the submitted fields; delete receives the ID', async () => {
+  let calls = 0;
+  const remote = await serve((body) => {
+    calls++;
+    assert.equal(body.model, 'test-model');
+    assert.equal(body.messages[0].content, 'Reply with OK.');
+    return { body: { choices: [{ message: { role: 'assistant', content: 'OK' } }] } };
+  });
+  const handlers = {};
+  let saved, deleted;
+  const store = { get: async () => undefined, list: async () => [], save: async (_kind, value) => { saved = value; }, delete: async (_kind, id) => { deleted = id; } };
+  const core = { http: { auth: { get: () => ({ status: 'authenticated', state: { authInfo: { user_id: 'admin', roles: ['xdr_navigator_admin'] } } }) } } };
+  registerRoutes(validatedRouter(handlers), core, Promise.resolve(store), { error: () => {} });
+  const response = { ok: ({ body }) => ({ status: 200, body }), custom: ({ statusCode, body }) => ({ status: statusCode, body }) };
+  const context = { core: { opensearch: { client: { asCurrentUser: { transport: { request: async () => { throw new Error('Unavailable in test'); } } } } } } };
+  const body = { name: 'Local model', url: `${remote.url}/v1/chat/completions`, model: 'test-model', apiKey: '' };
+  try {
+    const result = await handlers['post /api/xdr-navigator/models/test'](context, { body }, response);
+    assert.equal(result.status, 200, JSON.stringify(result));
+    assert.equal(result.body.response, 'OK');
+    assert.equal(calls, 1);
+    const invalid = await handlers['post /api/xdr-navigator/models/test'](context, { body: { ...body, name: '' } }, response);
+    assert.equal(invalid.status, 400);
+    assert.match(invalid.body.message, /Name is required/);
+    const save = await handlers['post /api/xdr-navigator/models'](context, { body }, response);
+    assert.equal(save.status, 200, JSON.stringify(save));
+    assert.equal(saved.name, body.name);
+    const remove = await handlers['delete /api/xdr-navigator/models/{id}'](context, { params: { id: saved.id } }, response);
+    assert.equal(remove.status, 200, JSON.stringify(remove));
+    assert.equal(deleted, saved.id);
+  } finally { await remote.close(); }
+});
+
+test('client displays the server error message', async () => {
+  const { Api } = require('../public/api.ts');
+  const api = new Api({ http: { fetch: async () => { throw { body: { message: 'Name is required' } }; } } });
+  await assert.rejects(api.call('/models/test', 'POST', {}), /Name is required/);
 });

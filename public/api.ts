@@ -7,9 +7,15 @@ export interface ConversationSummary extends Omit<Conversation, 'turns'> { turnC
 export class Api {
   constructor(private core: CoreStart) {}
   async call<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-    return this.core.http.fetch<T>(`/api/xdr-navigator${path}`, {
-      method, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    try {
+      return await this.core.http.fetch<T>(`/api/xdr-navigator${path}`, {
+        method, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch (error) {
+      const detail = (error as { body?: { message?: unknown } })?.body?.message;
+      if (typeof detail === 'string') throw new Error(detail);
+      throw error;
+    }
   }
   session() { return this.call<Session>('/session'); }
   models() { return this.call<ModelConnection[]>('/models'); }

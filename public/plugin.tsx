@@ -28,7 +28,7 @@ export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<
       mount: async (params: AppMountParameters) => {
         const [start] = await core.getStartServices();
         const root = createRoot(params.element);
-        root.render(<NavigatorApp api={new Api(start)} mode="page" onSelectChat={(id) => this.setConversation(id)} />);
+        root.render(<NavigatorApp api={new Api(start)} mode="page" onSelectChat={(id) => { this.setConversation(id); this.open(); }} />);
         return () => root.unmount();
       },
     });
@@ -91,7 +91,7 @@ export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<
 
   private renderSidecar() {
     if (!this.sidecarRoot || !this.core) return;
-    this.sidecarRoot.render(<NavigatorApp api={new Api(this.core)} mode="sidecar" initialConversationId={this.state.conversationId} onSelectChat={(id) => this.setConversation(id)} />);
+    this.sidecarRoot.render(<NavigatorApp api={new Api(this.core)} mode="sidecar" initialConversationId={this.state.conversationId} onSelectChat={(id) => this.setConversation(id)} onClose={() => this.close()} />);
   }
 
   private open(broadcast = true) {
