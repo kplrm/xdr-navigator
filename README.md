@@ -6,7 +6,7 @@ Navigator is the XDR Security AI chat plugin for OpenSearch Dashboards. It regis
 
 ## Configuration
 
-Navigator requires a signed-in OpenSearch Security user. For a user to manage model connections, agents, MCP servers, and every conversation, create an OpenSearch Security role named `xdr_navigator_admin` and map the user to it. Navigator checks resolved Security roles and backend roles from the signed-in identity. Other signed-in users can create private conversations and read and continue shared conversations. Conversation owners and Navigator admins can change visibility or delete a conversation. Only the latest turn's author or a Navigator admin can edit or retry that turn.
+The XDR bundle requires the `xdr_security` role, assigned to an existing signed-in user. Navigator uses that same role for model connections, agents, MCP servers and conversation administration. See the [bundle installation instructions](../xdr-security/README.md#install-on-kubernetes).
 
 Set `XDR_NAVIGATOR_ENCRYPTION_KEY` to a stable, secret value of at least 32 characters on every Dashboards instance. Navigator encrypts model API keys and MCP bearer tokens using AES-256-GCM. Back up this key securely: losing it makes saved credentials unreadable. The key is never stored in OpenSearch.
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { createRoot, Root } from 'react-dom/client';
+// Dashboards 3.5 uses React 16; this mount API also works with React 18 in 3.6–3.9.
+import ReactDOM from 'react-dom';
 import type { AppMountParameters, CoreSetup, CoreStart, Plugin, SIDECAR_DOCKED_MODE } from '../../OpenSearch-Dashboards/src/core/public';
 import { Api } from './api';
 import { NavigatorApp } from './ui';
@@ -15,8 +16,8 @@ function readState(key: string): UiState {
 export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<string, never>> {
   private core?: CoreStart;
   private sidecar?: { close: () => Promise<void>; onClose: Promise<void> };
-  private sidecarRoot?: Root;
-  private buttonRoot?: Root;
+  private sidecarElement?: HTMLElement;
+  private buttonElement?: HTMLElement;
   private channel?: BroadcastChannel;
   private state: UiState = { open: false };
   private storageKey?: string;
@@ -27,9 +28,8 @@ export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<
       category: { id: 'xdrSecurity', label: 'XDR Security', order: 2200 },
       mount: async (params: AppMountParameters) => {
         const [start] = await core.getStartServices();
-        const root = createRoot(params.element);
-        root.render(<NavigatorApp api={new Api(start)} mode="page" onSelectChat={(id) => { this.setConversation(id); this.open(); }} />);
-        return () => root.unmount();
+        ReactDOM.render(<NavigatorApp api={new Api(start)} mode="page" onSelectChat={(id) => { this.setConversation(id); this.open(); }} />, params.element);
+        return () => ReactDOM.unmountComponentAtNode(params.element);
       },
     });
     return {};
@@ -40,9 +40,9 @@ export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<
     core.chrome.navControls.registerRight({
       order: 900,
       mount: (element) => {
-        this.buttonRoot = createRoot(element);
+        this.buttonElement = element;
         this.renderButton();
-        return () => { this.buttonRoot?.unmount(); this.buttonRoot = undefined; };
+        return () => { ReactDOM.unmountComponentAtNode(element); this.buttonElement = undefined; };
       },
     });
     void new Api(core).session().then(({ user }) => {
@@ -84,22 +84,23 @@ export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<
   }
 
   private renderButton() {
-    this.buttonRoot?.render(<button className="xdrNavHeaderButton" onClick={() => this.sidecar ? this.close() : this.open()}>
+    if (!this.buttonElement) return;
+    ReactDOM.render(<button className="xdrNavHeaderButton" onClick={() => this.sidecar ? this.close() : this.open()}>
       ✦ XDR AI Agent
-    </button>);
+    </button>, this.buttonElement);
   }
 
   private renderSidecar() {
-    if (!this.sidecarRoot || !this.core) return;
-    this.sidecarRoot.render(<NavigatorApp api={new Api(this.core)} mode="sidecar" initialConversationId={this.state.conversationId} onSelectChat={(id) => this.setConversation(id)} onClose={() => this.close()} />);
+    if (!this.sidecarElement || !this.core) return;
+    ReactDOM.render(<NavigatorApp api={new Api(this.core)} mode="sidecar" initialConversationId={this.state.conversationId} onSelectChat={(id) => this.setConversation(id)} onClose={() => this.close()} />, this.sidecarElement);
   }
 
   private open(broadcast = true) {
     if (!this.core || this.sidecar) return;
     this.sidecar = this.core.overlays.sidecar.open((element) => {
-      this.sidecarRoot = createRoot(element);
+      this.sidecarElement = element;
       this.renderSidecar();
-      return () => { this.sidecarRoot?.unmount(); this.sidecarRoot = undefined; };
+      return () => { ReactDOM.unmountComponentAtNode(element); this.sidecarElement = undefined; };
     }, { className: 'xdrNavigatorSidecar', config: { dockedMode: 'right' as SIDECAR_DOCKED_MODE, paddingSize: 520 } });
     const ref = this.sidecar;
     void ref.onClose.then(() => {

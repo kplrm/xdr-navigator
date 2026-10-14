@@ -7,7 +7,7 @@ export interface Principal {
   admin: boolean;
 }
 
-const adminRole = 'xdr_navigator_admin';
+const adminRole = 'xdr_security';
 
 export async function principalFor(
   core: CoreSetup,

@@ -111,7 +111,7 @@ test('private chats deny other users while admins and shared readers can read', 
   const context = { core: { opensearch: { client: { asCurrentUser: { transport: { request: async () => { throw new Error('Unavailable in test'); } } } } } } };
   const read = handlers['get /api/xdr-navigator/conversations/{id}'];
   assert.equal((await read(context, { params: { id: 'chat' }, user: 'bob' }, response)).status, 404);
-  const adminRead = await read(context, { params: { id: 'chat' }, user: 'admin', roles: ['xdr_navigator_admin'] }, response);
+  const adminRead = await read(context, { params: { id: 'chat' }, user: 'admin', roles: ['xdr_security'] }, response);
   assert.equal(adminRead.status, 200, JSON.stringify(adminRead));
   chat.visibility = 'shared';
   assert.equal((await read(context, { params: { id: 'chat' }, user: 'bob' }, response)).status, 200);
@@ -135,7 +135,7 @@ test('saving an MCP connection discovers and stores its tools', async () => {
   const router = validatedRouter(handlers);
   let saved;
   const store = { get: async () => undefined, list: async () => [], save: async (_kind, value) => { saved = value; } };
-  const core = { http: { auth: { get: () => ({ status: 'authenticated', state: { authInfo: { user_id: 'admin', roles: ['xdr_navigator_admin'] } } }) } } };
+  const core = { http: { auth: { get: () => ({ status: 'authenticated', state: { authInfo: { user_id: 'admin', roles: ['xdr_security'] } } }) } } };
   const context = { core: { opensearch: { client: { asCurrentUser: { transport: { request: async () => { throw new Error('Unavailable in test'); } } } } } } };
   const response = { ok: ({ body }) => ({ status: 200, body }), custom: ({ statusCode, body }) => ({ status: statusCode, body }) };
   registerRoutes(router, core, Promise.resolve(store), { error: () => {} });
@@ -159,7 +159,7 @@ test('model test and save receive the submitted fields; delete receives the ID',
   const handlers = {};
   let saved, deleted;
   const store = { get: async () => undefined, list: async () => [], save: async (_kind, value) => { saved = value; }, delete: async (_kind, id) => { deleted = id; } };
-  const core = { http: { auth: { get: () => ({ status: 'authenticated', state: { authInfo: { user_id: 'admin', roles: ['xdr_navigator_admin'] } } }) } } };
+  const core = { http: { auth: { get: () => ({ status: 'authenticated', state: { authInfo: { user_id: 'admin', roles: ['xdr_security'] } } }) } } };
   registerRoutes(validatedRouter(handlers), core, Promise.resolve(store), { error: () => {} });
   const response = { ok: ({ body }) => ({ status: 200, body }), custom: ({ statusCode, body }) => ({ status: statusCode, body }) };
   const context = { core: { opensearch: { client: { asCurrentUser: { transport: { request: async () => { throw new Error('Unavailable in test'); } } } } } } };
