@@ -24,7 +24,7 @@ export class XdrNavigatorPlugin implements Plugin<Record<string, never>, Record<
 
   public setup(core: CoreSetup) {
     core.application.register({
-      id: 'xdrNavigator', title: 'Navigator', order: 3,
+      id: 'xdrNavigator', title: 'XDR Navigator', order: 3,
       category: { id: 'xdrSecurity', label: 'XDR Security', order: 2200 },
       mount: async (params: AppMountParameters) => {
         const [start] = await core.getStartServices();
